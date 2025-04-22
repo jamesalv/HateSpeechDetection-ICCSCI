@@ -1,0 +1,3 @@
+Model,Parameters (M),Inference Time (s),Samples/Second
+distilbert-base-uncased,66.955779,4.728423357009888,203.45047965593753
+bert-base-uncased,109.484547,9.189079761505127,104.68948196858715

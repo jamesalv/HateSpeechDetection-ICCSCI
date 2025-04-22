@@ -1,0 +1,230 @@
+{
+  "binary": {
+    "bert-base-uncased": {
+      "model_name": "bert-base-uncased",
+      "num_classes": 2,
+      "history": {
+        "train_loss": [
+          0.0
+        ],
+        "val_loss": [
+          0.44901163069480055
+        ],
+        "val_accuracy": [
+          0.7949162333911034
+        ],
+        "val_f1": [
+          0.7918527528562007
+        ]
+      },
+      "metrics": {
+        "accuracy": 0.7805512220488819,
+        "f1_score": 0.7763031382935321,
+        "precision": 0.7744216442722562,
+        "recall": 0.7822490587530917,
+        "auroc": 0.8666540718599128,
+        "loss": 0.4550574579514748
+      },
+      "confusion_matrix": [
+        [
+          618,
+          163
+        ],
+        [
+          259,
+          883
+        ]
+      ],
+      "label_map": {
+        "non-toxic": 0,
+        "toxic": 1
+      },
+      "target_metrics": {
+        "None": 0.7564356435643564,
+        "African": 0.8102678571428571,
+        "Women": 0.7235772357723578,
+        "Other": 0.7796143250688705,
+        "Islam": 0.7770491803278688,
+        "Homosexual": 0.7926829268292683,
+        "Jewish": 0.8672566371681416,
+        "Arab": 0.8313953488372093,
+        "Men": 0.7692307692307693,
+        "Caucasian": 0.7098765432098766
+      }
+    },
+    "distilbert-base-uncased": {
+      "model_name": "distilbert-base-uncased",
+      "num_classes": 2,
+      "history": {
+        "train_loss": [
+          0.0
+        ],
+        "val_loss": [
+          0.4386237293071703
+        ],
+        "val_accuracy": [
+          0.7839399191218949
+        ],
+        "val_f1": [
+          0.7796690580884054
+        ]
+      },
+      "metrics": {
+        "accuracy": 0.7763910556422257,
+        "f1_score": 0.771076498859383,
+        "precision": 0.7690924584295689,
+        "recall": 0.7751036548858508,
+        "auroc": 0.8661422443272914,
+        "loss": 0.4513436734430061
+      },
+      "confusion_matrix": [
+        [
+          600,
+          181
+        ],
+        [
+          249,
+          893
+        ]
+      ],
+      "label_map": {
+        "non-toxic": 0,
+        "toxic": 1
+      },
+      "target_metrics": {
+        "None": 0.7346534653465346,
+        "African": 0.8102678571428571,
+        "Women": 0.7317073170731707,
+        "Other": 0.768595041322314,
+        "Islam": 0.8,
+        "Homosexual": 0.7682926829268293,
+        "Jewish": 0.8761061946902655,
+        "Arab": 0.8488372093023255,
+        "Men": 0.7988165680473372,
+        "Caucasian": 0.7098765432098766
+      }
+    }
+  },
+  "3class": {
+    "bert-base-uncased": {
+      "model_name": "bert-base-uncased",
+      "num_classes": 3,
+      "history": {
+        "train_loss": [
+          0.0
+        ],
+        "val_loss": [
+          0.7168234146516258
+        ],
+        "val_accuracy": [
+          0.6897746967071057
+        ],
+        "val_f1": [
+          0.6821569896984453
+        ]
+      },
+      "metrics": {
+        "accuracy": 0.7009880395215808,
+        "f1_score": 0.6936613933983642,
+        "precision": 0.6939759521210437,
+        "recall": 0.6933867246999079,
+        "auroc": 0.8566617881776595,
+        "loss": 0.6968026698128251
+      },
+      "confusion_matrix": [
+        [
+          464,
+          43,
+          87
+        ],
+        [
+          41,
+          577,
+          163
+        ],
+        [
+          83,
+          158,
+          307
+        ]
+      ],
+      "label_map": {
+        "hatespeech": 0,
+        "normal": 1,
+        "offensive": 2
+      },
+      "target_metrics": {
+        "None": 0.7027833001988072,
+        "African": 0.7369614512471655,
+        "Women": 0.6711956521739131,
+        "Other": 0.6657534246575343,
+        "Islam": 0.6357142857142857,
+        "Homosexual": 0.5941422594142259,
+        "Jewish": 0.7051282051282052,
+        "Caucasian": 0.6590909090909091,
+        "Refugee": 0.5900621118012422,
+        "Men": 0.6496815286624203
+      }
+    },
+    "distilbert-base-uncased": {
+      "model_name": "distilbert-base-uncased",
+      "num_classes": 3,
+      "history": {
+        "train_loss": [
+          0.0
+        ],
+        "val_loss": [
+          0.7365520213722089
+        ],
+        "val_accuracy": [
+          0.6857307914500289
+        ],
+        "val_f1": [
+          0.6799500660002717
+        ]
+      },
+      "metrics": {
+        "accuracy": 0.6827873114924597,
+        "f1_score": 0.6718645488498428,
+        "precision": 0.6725341035175628,
+        "recall": 0.6719558711522661,
+        "auroc": 0.8460765975013756,
+        "loss": 0.7167602004098498
+      },
+      "confusion_matrix": [
+        [
+          467,
+          48,
+          79
+        ],
+        [
+          44,
+          577,
+          160
+        ],
+        [
+          85,
+          194,
+          269
+        ]
+      ],
+      "label_map": {
+        "hatespeech": 0,
+        "normal": 1,
+        "offensive": 2
+      },
+      "target_metrics": {
+        "None": 0.6918489065606361,
+        "African": 0.7233560090702947,
+        "Women": 0.6331521739130435,
+        "Other": 0.6520547945205479,
+        "Islam": 0.6142857142857143,
+        "Homosexual": 0.5732217573221757,
+        "Jewish": 0.7136752136752137,
+        "Caucasian": 0.6306818181818182,
+        "Refugee": 0.5652173913043478,
+        "Men": 0.643312101910828
+      }
+    }
+  }
+}

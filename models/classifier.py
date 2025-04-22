@@ -1,0 +1,282 @@
+import torch
+from torch.nn import CrossEntropyLoss
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    get_linear_schedule_with_warmup,
+)
+from torch.optim import AdamW
+from tqdm import tqdm
+import os
+import numpy as np
+from typing import Dict, List, Tuple, Any, Union, Optional
+
+
+class TransformerClassifier:
+    """Transformer-based classifier for hate speech detection"""
+
+    def __init__(self, model_name: str, num_labels: int, device=None):
+        """
+        Initialize the classifier.
+
+        Args:
+            model_name: Hugging Face model name
+            num_labels: Number of output classes
+            device: Torch device (will use GPU if available when None)
+        """
+        self.model_name = model_name
+        self.num_labels = num_labels
+        
+
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = device
+
+        print(f"Using device: {self.device}")
+
+        # Initialize tokenizer and model
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            model_name, num_labels=num_labels
+        )
+        self.model.to(self.device)
+
+    def train(
+        self,
+        train_dataloader: torch.utils.data.DataLoader,
+        val_dataloader: torch.utils.data.DataLoader,
+        class_weights: Optional[np.ndarray] = None,
+        epochs: int = 5,
+        learning_rate: float = 2e-5,
+        warmup_steps: int = 0,
+    ) -> Dict[str, List[float]]:
+        """
+        Train the transformer model
+
+        Args:
+            train_dataloader: Training data loader
+            val_dataloader: Validation data loader
+            epochs: Number of training epochs
+            learning_rate: Learning rate for optimizer
+            warmup_steps: Number of warmup steps for scheduler
+
+        Returns:
+            Dictionary with training history
+        """
+        # Initialize optimizer
+        optimizer = AdamW(self.model.parameters(), lr=learning_rate, eps=1e-8)
+
+        # Total number of training steps
+        total_steps = len(train_dataloader) * epochs
+
+        # Set up learning rate scheduler
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
+        )
+
+        # Initialize training history
+        history = {"train_loss": [], "val_loss": [], "val_accuracy": [], "val_f1": []}
+
+        # Setup loss function with class weights if provided
+        if class_weights is not None:
+            # Convert class weights to tensor of type float32 and move to device
+            weight_tensor = torch.tensor(
+                [class_weights[i] for i in range(self.num_labels)], 
+                device=self.device,
+                dtype=torch.float32  # Explicitly specify float32
+            )
+            loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
+        else:
+            loss_fn = torch.nn.CrossEntropyLoss()
+
+        # Training loop
+        for epoch in range(epochs):
+            print(f"\nEpoch {epoch+1}/{epochs}")
+
+            # Training phase
+            self.model.train()
+            total_train_loss = 0
+
+            # Progress bar for training
+            progress_bar = tqdm(train_dataloader, desc="Training", unit="batch")
+
+            for batch in progress_bar:
+                # Clear previous gradients
+                self.model.zero_grad()
+
+                # Move batch to device
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
+
+                # Forward pass
+                outputs = self.model(
+                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
+                )
+
+                logits = outputs.logits
+                loss = loss_fn(logits, labels)
+
+                # Backward pass
+                loss.backward()
+
+                # Clip gradients to prevent exploding gradients
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                # Update parameters
+                optimizer.step()
+
+                # Update learning rate
+                scheduler.step()
+
+                # Update progress bar
+                progress_bar.set_postfix({"loss": loss.item()})
+
+            # Calculate average training loss
+            avg_train_loss = total_train_loss / len(train_dataloader)
+            history["train_loss"].append(avg_train_loss)
+
+            print(f"Average training loss: {avg_train_loss:.4f}")
+
+            # Validation phase
+            val_loss, val_accuracy, val_f1 = self.evaluate(val_dataloader)
+
+            history["val_loss"].append(val_loss)
+            history["val_accuracy"].append(val_accuracy)
+            history["val_f1"].append(val_f1)
+
+            print(f"Validation loss: {val_loss:.4f}")
+            print(f"Validation accuracy: {val_accuracy:.4f}")
+            print(f"Validation F1 score: {val_f1:.4f}")
+
+        return history
+
+    def evaluate(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> Tuple[float, float, float]:
+        """
+        Evaluate the model on a dataset
+
+        Args:
+            dataloader: DataLoader with evaluation data
+
+        Returns:
+            loss, accuracy, f1_score
+        """
+        from sklearn.metrics import accuracy_score, f1_score
+
+        self.model.eval()
+
+        total_loss = 0
+        all_preds = []
+        all_labels = []
+
+        # No gradient computation for evaluation
+        with torch.no_grad():
+            for batch in tqdm(dataloader, desc="Evaluating", unit="batch"):
+                # Move batch to device
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
+
+                # Forward pass
+                outputs = self.model(
+                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
+                )
+
+                loss = outputs.loss
+                total_loss += loss.item()
+
+                # Get predictions
+                logits = outputs.logits
+                preds = torch.argmax(logits, dim=1).cpu().numpy()
+
+                # Store predictions and labels
+                all_preds.extend(preds)
+                all_labels.extend(labels.cpu().numpy())
+
+        # Calculate metrics
+        accuracy = accuracy_score(all_labels, all_preds)
+        f1 = f1_score(all_labels, all_preds, average="macro")
+
+        # Calculate loss
+        avg_loss = total_loss / len(dataloader)
+
+        return avg_loss, accuracy, f1
+
+    def predict(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Make predictions with the model
+
+        Args:
+            dataloader: DataLoader with test data
+
+        Returns:
+            predictions, true_labels, probabilities
+        """
+        self.model.eval()
+
+        all_preds = []
+        all_labels = []
+        all_probs = []
+
+        # No gradient computation for prediction
+        with torch.no_grad():
+            for batch in tqdm(dataloader, desc="Predicting", unit="batch"):
+                # Move batch to device
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                labels = batch["labels"].to(self.device)
+
+                # Forward pass
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+
+                # Get predictions
+                logits = outputs.logits
+                probs = torch.softmax(logits, dim=1)
+                preds = torch.argmax(logits, dim=1).cpu().numpy()
+
+                # Store predictions, probabilities, and labels
+                all_preds.extend(preds)
+                all_probs.extend(probs.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+
+        # Convert to numpy arrays
+        return np.array(all_preds), np.array(all_labels), np.array(all_probs)
+
+    def save_model(self, path: str) -> None:
+        """
+        Save model to disk
+
+        Args:
+            path: Directory path to save the model
+        """
+        # Create directory if it doesn't exist
+        os.makedirs(path, exist_ok=True)
+
+        # Save model
+        self.model.save_pretrained(path)
+
+        # Save tokenizer
+        self.tokenizer.save_pretrained(path)
+
+        print(f"Model saved to {path}")
+
+    def load_model(self, path: str) -> None:
+        """
+        Load model from disk
+
+        Args:
+            path: Directory path to load the model from
+        """
+        # Load model
+        self.model = AutoModelForSequenceClassification.from_pretrained(path)
+        self.model.to(self.device)
+
+        # Load tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(path)
+
+        print(f"Model loaded from {path}")
