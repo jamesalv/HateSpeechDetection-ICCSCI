@@ -97,6 +97,9 @@ class TransformerClassifier:
         learning_rate: float = 2e-5,
         warmup_steps: int = 0,
         weight_decay: float = 0.01,
+        patience: int = 2,
+        min_delta: float = 0.001,
+        monitor: str = "val_loss",
     ) -> Dict[str, List[float]]:
         """
         Train the transformer model
@@ -109,6 +112,9 @@ class TransformerClassifier:
             learning_rate: Learning rate for optimizer
             warmup_steps: Number of warmup steps for scheduler
             weight_decay: Weight decay for optimizer
+            patience: Number of epochs with no improvement after which training will be stopped
+            min_delta: Minimum change in monitored value to qualify as improvement
+            monitor: Metric to monitor for early stopping ('val_loss', 'val_accuracy', or 'val_f1')
 
         Returns:
             Dictionary with training history
@@ -138,7 +144,13 @@ class TransformerClassifier:
             loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
         else:
             loss_fn = torch.nn.CrossEntropyLoss()
-
+        
+        # Early stopping variables
+        best_metric_value = float('inf') if monitor == 'val_loss' else -float('inf')
+        best_epoch = 0
+        no_improve_count = 0
+        best_model_state = None
+        
         # Training loop
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
@@ -199,7 +211,36 @@ class TransformerClassifier:
             print(f"Validation loss: {val_loss:.4f}")
             print(f"Validation accuracy: {val_accuracy:.4f}")
             print(f"Validation F1 score: {val_f1:.4f}")
-
+            
+            # Check for early stopping
+            current_metric = val_loss if monitor == 'val_loss' else val_accuracy if monitor == 'val_accuracy' else val_f1
+            if monitor == 'val_loss':
+                improved = current_metric < best_metric_value - min_delta
+            else:
+                improved = current_metric > best_metric_value + min_delta
+                
+            if improved:
+                print(f"Validation {monitor} improved from {best_metric_value:.4f} to {current_metric:.4f}")
+                best_metric_value = current_metric
+                best_epoch = epoch
+                no_improve_count = 0
+                
+                # Save best model state
+                best_model_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+            else:
+                no_improve_count += 1
+                print(f"Validation {monitor} did not improve. Best: {best_metric_value:.4f}, Current: {current_metric:.4f}")
+                print(f"Early stopping counter: {no_improve_count}/{patience}")
+                
+                if no_improve_count >= patience:
+                    print(f"Early stopping triggered. Best {monitor}: {best_metric_value:.4f} at epoch {best_epoch+1}")
+                    break
+        
+        # Load best model if early stopping occurred
+        if best_model_state is not None and best_epoch < epoch:
+            print(f"Loading best model from epoch {best_epoch+1}")
+            self.model.load_state_dict({k: v.to(self.device) for k, v in best_model_state.items()})
+        
         return history
 
     def evaluate(
