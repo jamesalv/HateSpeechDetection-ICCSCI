@@ -3,6 +3,7 @@ from torch.nn import CrossEntropyLoss
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
+    AutoConfig,
     get_linear_schedule_with_warmup,
 )
 from torch.optim import AdamW
@@ -15,18 +16,30 @@ from typing import Dict, List, Tuple, Any, Union, Optional
 class TransformerClassifier:
     """Transformer-based classifier for hate speech detection"""
 
-    def __init__(self, model_name: str, num_labels: int, device=None):
+    def __init__(
+        self, 
+        model_name: str, 
+        num_labels: int, 
+        hidden_dropout_prob: float = 0.1,
+        attention_probs_dropout_prob: float = 0.1,
+        classifier_dropout: float = 0.1,
+        custom_classifier_head: bool = False,
+        device=None
+    ):
         """
         Initialize the classifier.
 
         Args:
             model_name: Hugging Face model name
             num_labels: Number of output classes
+            hidden_dropout_prob: Dropout rate for hidden layers
+            attention_probs_dropout_prob: Dropout rate for attention probabilities
+            classifier_dropout: Dropout rate for classifier
+            custom_classifier_head: Whether to use a custom classifier head
             device: Torch device (will use GPU if available when None)
         """
         self.model_name = model_name
         self.num_labels = num_labels
-        
 
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,11 +48,44 @@ class TransformerClassifier:
 
         print(f"Using device: {self.device}")
 
+        # Load configuration and customize it
+        config = AutoConfig.from_pretrained(model_name)
+        config.num_labels = num_labels
+        config.hidden_dropout_prob = hidden_dropout_prob
+        config.attention_probs_dropout_prob = attention_probs_dropout_prob
+        
+        # Some models don't have classifier_dropout in their config
+        # If it exists in the config, use it; otherwise, add it later on our 
+        # custom classifier head
+        # This is a workaround for models that don't have this parameter in their config
+        if hasattr(config, 'classifier_dropout'):
+            config.classifier_dropout = classifier_dropout
+        elif hasattr(config, 'classifier_dropout_prob'):
+            config.classifier_dropout_prob = classifier_dropout
+        else:
+            print(f"No classifier dropout parameter found in config. Model: {model_name}")
+            pass
+            
         # Initialize tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=num_labels
+            model_name, config=config
         )
+        
+        # Optional custom classifier head
+        if custom_classifier_head:
+            print(f"Using custom classifier head for model: {model_name}")
+            # Get the size of the hidden states
+            hidden_size = config.hidden_size
+            
+            # Replace the classifier with a custom one
+            self.model.classifier = torch.nn.Sequential(
+                torch.nn.Linear(hidden_size, hidden_size),
+                torch.nn.ReLU(),
+                torch.nn.Dropout(classifier_dropout),
+                torch.nn.Linear(hidden_size, num_labels)
+            )
+        
         self.model.to(self.device)
 
     def train(
@@ -50,6 +96,7 @@ class TransformerClassifier:
         epochs: int = 5,
         learning_rate: float = 2e-5,
         warmup_steps: int = 0,
+        weight_decay: float = 0.01,
     ) -> Dict[str, List[float]]:
         """
         Train the transformer model
@@ -57,15 +104,17 @@ class TransformerClassifier:
         Args:
             train_dataloader: Training data loader
             val_dataloader: Validation data loader
+            class_weights: Class weights for loss function (optional)
             epochs: Number of training epochs
             learning_rate: Learning rate for optimizer
             warmup_steps: Number of warmup steps for scheduler
+            weight_decay: Weight decay for optimizer
 
         Returns:
             Dictionary with training history
         """
         # Initialize optimizer
-        optimizer = AdamW(self.model.parameters(), lr=learning_rate, eps=1e-8)
+        optimizer = AdamW(self.model.parameters(), lr=learning_rate, eps=1e-8, weight_decay=weight_decay)
 
         # Total number of training steps
         total_steps = len(train_dataloader) * epochs
@@ -82,9 +131,9 @@ class TransformerClassifier:
         if class_weights is not None:
             # Convert class weights to tensor of type float32 and move to device
             weight_tensor = torch.tensor(
-                [class_weights[i] for i in range(self.num_labels)], 
+                [class_weights[i] for i in range(self.num_labels)],
                 device=self.device,
-                dtype=torch.float32  # Explicitly specify float32
+                dtype=torch.float32,  # Explicitly specify float32
             )
             loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
         else:
@@ -117,6 +166,7 @@ class TransformerClassifier:
 
                 logits = outputs.logits
                 loss = loss_fn(logits, labels)
+                total_train_loss += loss.item()
 
                 # Backward pass
                 loss.backward()

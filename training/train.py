@@ -22,7 +22,12 @@ def train_and_evaluate_model(
     learning_rate: float = 2e-5,
     warmup_steps: int = 0,
     model_dir: str = "saved_models",
-    auto_weighted: bool = False
+    auto_weighted: bool = False,
+    hidden_dropout_prob: float = 0.1,
+    attention_probs_dropout_prob: float = 0.1,
+    classifier_dropout: float = 0.1,
+    custom_classifier_head: bool = False,
+    weight_decay: float = 0.01,
 ) -> Dict[str, Any]:
     """
     Train and evaluate a model with the given parameters
@@ -34,14 +39,28 @@ def train_and_evaluate_model(
         batch_size: Batch size for training
         epochs: Number of training epochs
         max_length: Maximum sequence length for tokenization
+        learning_rate: Learning rate for the optimizer
+        warmup_steps: Number of warmup steps for learning rate scheduler
         model_dir: Directory to save models
         auto_weighted: Whether to use automatic weighting for classes
+        hidden_dropout_prob: Dropout probability for hidden layers
+        attention_probs_dropout_prob: Dropout probability for attention layers
+        classifier_dropout: Dropout probability for the classifier head
+        custom_classifier_head: Whether to use a custom classifier head
+        weight_decay: Weight decay for the optimizer
         
     Returns:
         Dictionary with results
     """
     # Initialize model
-    classifier = TransformerClassifier(model_name, num_classes)
+    classifier = TransformerClassifier(
+        model_name, 
+        num_classes,
+        hidden_dropout_prob=hidden_dropout_prob,
+        attention_probs_dropout_prob=attention_probs_dropout_prob,
+        classifier_dropout=classifier_dropout,
+        custom_classifier_head=custom_classifier_head,
+        )
     
     # Prepare data loaders
     train_dataloader, val_dataloader, test_dataloader, label_map, test_df, label_to_weight = prepare_data_loaders(
@@ -66,7 +85,8 @@ def train_and_evaluate_model(
         class_weights=ordered_weights,
         epochs=epochs,
         learning_rate=learning_rate,
-        warmup_steps=warmup_steps
+        warmup_steps=warmup_steps,
+        weight_decay=weight_decay,
     )
     
     # Evaluate on test set
@@ -171,7 +191,12 @@ def run_model_comparison(
     data_2class: pd.DataFrame, 
     batch_size: int = 16, 
     epochs: int = 3,
-    auto_weighted: bool = False
+    auto_weighted: bool = False,
+    hidden_dropout_prob: float = 0.1,
+    attention_probs_dropout_prob: float = 0.1,
+    classifier_dropout: float = 0.1,
+    custom_classifier_head: bool = False,
+    weight_decay: float = 0.01,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run comparison of multiple models on both binary and 3-class tasks
@@ -182,6 +207,11 @@ def run_model_comparison(
         data_2class: DataFrame with binary data
         batch_size: Batch size for training
         epochs: Number of training epochs
+        hidden_dropout_prob: Dropout probability for hidden layers
+        attention_probs_dropout_prob: Dropout probability for attention layers
+        classifier_dropout: Dropout probability for the classifier head
+        custom_classifier_head: Whether to use a custom classifier head
+        weight_decay: Weight decay for the optimizer
         
     Returns:
         Dictionary with all results
@@ -201,7 +231,12 @@ def run_model_comparison(
             num_classes=3,
             batch_size=batch_size,
             epochs=epochs,
-            auto_weighted=auto_weighted
+            auto_weighted=auto_weighted,
+            hidden_dropout_prob=hidden_dropout_prob,
+            attention_probs_dropout_prob=attention_probs_dropout_prob,
+            classifier_dropout=classifier_dropout,
+            custom_classifier_head=custom_classifier_head,
+            weight_decay=weight_decay
         )
     
     # Then run binary models
@@ -214,7 +249,12 @@ def run_model_comparison(
             num_classes=2,
             batch_size=batch_size,
             epochs=epochs,
-            auto_weighted=auto_weighted
+            auto_weighted=auto_weighted,
+            hidden_dropout_prob=hidden_dropout_prob,
+            attention_probs_dropout_prob=attention_probs_dropout_prob,
+            classifier_dropout=classifier_dropout,
+            custom_classifier_head=custom_classifier_head,
+            weight_decay=weight_decay
         )
     
     return results
