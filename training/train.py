@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from typing import Dict, List, Tuple, Any, Union, Optional
-
 from models.classifier import TransformerClassifier
 from data.dataset import prepare_data_loaders
+from analysis.bias import calculate_gmb_metrics
 
 
 def train_and_evaluate_model(
@@ -192,6 +192,31 @@ def train_and_evaluate_model(
             target_metrics[target] = target_acc
     else:
         target_metrics = None
+        
+    if 'target_groups' in test_df.columns:
+        # Get list of target groups
+        all_targets = []
+        for targets in test_df['target_groups']:
+            if targets is not None:
+                all_targets.extend(targets)
+        
+        from collections import Counter
+        top_targets = Counter(all_targets).most_common(10)
+        target_groups = [target for target, _ in top_targets]
+        
+        # Calculate GMB metrics
+        bias_auc_metrics = calculate_gmb_metrics(
+            predictions, 
+            probabilities, 
+            true_labels, 
+            test_df, 
+            target_groups
+        )
+        
+        # Print GMB metrics
+        print("\nBias AUC Metrics:")
+        for metric, value in bias_auc_metrics.items():
+            print(f"{metric}: {value:.4f}")
 
     # Return comprehensive results
     results = {
@@ -209,6 +234,7 @@ def train_and_evaluate_model(
         "confusion_matrix": cm,
         "label_map": label_map,
         "target_metrics": target_metrics,
+        "bias_auc_metrics": bias_auc_metrics,
     }
 
     return results
@@ -287,7 +313,6 @@ def run_model_comparison(
             classifier_dropout=classifier_dropout,
             custom_classifier_head=custom_classifier_head,
             weight_decay=weight_decay,
-            patience=patience,
             patience=patience,
             min_delta=min_delta,
             monitor=monitor,
