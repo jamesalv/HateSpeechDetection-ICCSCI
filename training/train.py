@@ -226,6 +226,9 @@ def run_model_comparison(
     classifier_dropout: float = 0.1,
     custom_classifier_head: bool = False,
     weight_decay: float = 0.01,
+    patience: int = 2,
+    min_delta: float = 0.001,
+    monitor: str = "val_loss",
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run comparison of multiple models on both binary and 3-class tasks
@@ -263,6 +266,9 @@ def run_model_comparison(
             classifier_dropout=classifier_dropout,
             custom_classifier_head=custom_classifier_head,
             weight_decay=weight_decay,
+            patience=patience,
+            min_delta=min_delta,
+            monitor=monitor,
         )
 
     # Then run binary models
@@ -281,6 +287,10 @@ def run_model_comparison(
             classifier_dropout=classifier_dropout,
             custom_classifier_head=custom_classifier_head,
             weight_decay=weight_decay,
+            patience=patience,
+            patience=patience,
+            min_delta=min_delta,
+            monitor=monitor,
         )
 
     return results
