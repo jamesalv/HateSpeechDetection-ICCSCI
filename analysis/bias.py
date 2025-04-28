@@ -42,10 +42,6 @@ def analyze_bias(results: Dict[str, Dict[str, Any]], task_type: str = '3class') 
         print(f"Target group with worst performance: {worst_target[0]} (accuracy: {worst_target[1]:.4f})")
         print(f"Target group with best performance: {best_target[0]} (accuracy: {best_target[1]:.4f})")
         
-        # Calculate bias score (normalized standard deviation)
-        bias_score = target_std / target_mean if target_mean > 0 else float('inf')
-        print(f"Bias score (normalized std): {bias_score:.4f}")
-        
         # Print GMB metrics if they're available
         if 'bias_auc_metrics' in result:
             print("\nGMB Metrics:")
@@ -203,6 +199,132 @@ def calculate_gmb_metrics(
         gmb_metrics['GMB-COMBINED-AUC'] = np.mean([score ** power for score in all_scores]) ** (1/power)
     
     return gmb_metrics
+
+def plot_gmb_metrics(results: Dict[str, Dict[str, Any]], task_type: str = '3class') -> None:
+    """
+    Plot Generalized Mean of Bias (GMB) metrics for all models
+    
+    Args:
+        results: Dictionary with model results
+        task_type: Type of classification task ('binary' or '3class')
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Extract metrics from results
+    models = []
+    subgroup_scores = []
+    bpsn_scores = []
+    bnsp_scores = []
+    combined_scores = []
+    
+    for model_name, result in results[task_type].items():
+        if 'bias_auc_metrics' not in result or not result['bias_auc_metrics']:
+            continue
+            
+        # Get shortened model name for better display
+        model_short = model_name.split('/')[-1]
+        models.append(model_short)
+        
+        metrics = result['bias_auc_metrics']
+        subgroup_scores.append(metrics.get('GMB-SUBGROUP-AUC', 0))
+        bpsn_scores.append(metrics.get('GMB-BPSN-AUC', 0))
+        bnsp_scores.append(metrics.get('GMB-BNSP-AUC', 0))
+        combined_scores.append(metrics.get('GMB-COMBINED-AUC', 0))
+    
+    if not models:
+        print("No GMB metrics available for plotting")
+        return
+        
+    # Set up the plot
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Position of bars on x-axis
+    x = np.arange(len(models))
+    width = 0.2  # Width of the bars
+    
+    # Create bars
+    rects1 = ax.bar(x - width*1.5, subgroup_scores, width, label='Subgroup AUC')
+    rects2 = ax.bar(x - width/2, bpsn_scores, width, label='BPSN AUC')
+    rects3 = ax.bar(x + width/2, bnsp_scores, width, label='BNSP AUC')
+    rects4 = ax.bar(x + width*1.5, combined_scores, width, label='Combined AUC')
+    
+    # Add labels, title and legend
+    ax.set_xlabel('Models')
+    ax.set_ylabel('GMB AUC Score')
+    ax.set_title(f'Generalized Mean of Bias (GMB) Metrics - {task_type} Classification')
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha='right')
+    ax.legend()
+    
+    # Add value labels on top of bars
+    def add_labels(rects):
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate(f'{height:.3f}',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom',
+                        fontsize=8)
+    
+    add_labels(rects1)
+    add_labels(rects2)
+    add_labels(rects3)
+    add_labels(rects4)
+    
+    # Set y-axis to start from 0.5 for better visualization of differences
+    ax.set_ylim(0.5, 1.0)
+    
+    # Add a horizontal line at 0.8 as a reference for good performance
+    ax.axhline(y=0.8, color='r', linestyle='--', alpha=0.3)
+    ax.text(x[-1] + 0.5, 0.8, '0.8 (Good Performance)', va='center', alpha=0.7)
+    
+    # Add grid for better readability
+    ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+    
+    # Ensure layout looks good
+    fig.tight_layout()
+    
+    # Show plot
+    plt.show()
+
+    # Also create a separate plot focused on the combined score for clearer comparison
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    bars = ax.bar(models, combined_scores, color='teal')
+    
+    # Add labels and title
+    ax.set_xlabel('Models')
+    ax.set_ylabel('Combined GMB AUC Score')
+    ax.set_title(f'Combined Bias Score Comparison - {task_type} Classification')
+    ax.set_xticklabels(models, rotation=45, ha='right')
+    
+    # Add value labels
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(f'{height:.4f}',
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+    
+    # Set y-axis to start from 0.5
+    ax.set_ylim(0.5, 1.0)
+    
+    # Add a horizontal line at 0.8
+    ax.axhline(y=0.8, color='r', linestyle='--', alpha=0.3)
+    ax.text(len(models) - 1, 0.8, '0.8 (Good Performance)', va='center', alpha=0.7)
+    
+    # Add grid
+    ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+    
+    # Ensure layout looks good
+    fig.tight_layout()
+    
+    # Show plot
+    plt.show()
+    
 
 def get_bias_evaluation_samples(data, method, group):
     """

@@ -24,15 +24,6 @@ def create_summary_table(results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
             # Extract key metrics
             metrics = result['metrics']
             
-            # Calculate bias score if target metrics available
-            if result['target_metrics']:
-                target_values = list(result['target_metrics'].values())
-                target_std = np.std(target_values)
-                target_mean = np.mean(target_values)
-                bias_score = target_std / target_mean if target_mean > 0 else float('inf')
-            else:
-                bias_score = float('nan')
-            
             # Add row to summary data
             summary_data.append({
                 'Model': model_name.split('/')[-1],
@@ -42,7 +33,6 @@ def create_summary_table(results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
                 'Precision': metrics['precision'],
                 'Recall': metrics['recall'],
                 'AUROC': metrics['auroc'],
-                'Bias Score': bias_score
             })
     
     # Create DataFrame

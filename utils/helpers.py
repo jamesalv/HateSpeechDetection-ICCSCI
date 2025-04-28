@@ -59,7 +59,8 @@ def save_results(
                 'metrics': result['metrics'],
                 'confusion_matrix': result['confusion_matrix'].tolist() if isinstance(result['confusion_matrix'], np.ndarray) else result['confusion_matrix'],
                 'label_map': result['label_map'],
-                'target_metrics': result['target_metrics']
+                'target_metrics': result['target_metrics'],
+                'bias_auc_metrics': result['bias_auc_metrics'],
             }
             
             serializable_results[task_type][model_name] = serializable_result
