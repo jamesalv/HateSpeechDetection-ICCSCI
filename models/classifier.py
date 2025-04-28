@@ -1,5 +1,6 @@
 import torch
 from torch.nn import CrossEntropyLoss
+import torch.nn as nn
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
@@ -11,20 +12,39 @@ from tqdm import tqdm
 import os
 import numpy as np
 from typing import Dict, List, Tuple, Any, Union, Optional
+import torch.nn.functional as F
+
+
+# Roberta classifier acts different than other models, causing
+# dimension discrepancy
+class CustomRobertaHead(nn.Module):
+    def __init__(self, hidden_size: int, num_labels: int, dropout: float):
+        super().__init__()
+        self.dense = nn.Linear(hidden_size, hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.out_proj = nn.Linear(hidden_size, num_labels)
+
+    def forward(self, features):
+        # features: [batch_size, seq_len, hidden_size]
+        x = features[:, 0, :]  # pool on the first token
+        x = self.dense(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        return self.out_proj(x)  # → [batch_size, num_labels]
 
 
 class TransformerClassifier:
     """Transformer-based classifier for hate speech detection"""
 
     def __init__(
-        self, 
-        model_name: str, 
-        num_labels: int, 
+        self,
+        model_name: str,
+        num_labels: int,
         hidden_dropout_prob: float = 0.1,
         attention_probs_dropout_prob: float = 0.1,
         classifier_dropout: float = 0.1,
         custom_classifier_head: bool = False,
-        device=None
+        device=None,
     ):
         """
         Initialize the classifier.
@@ -48,24 +68,28 @@ class TransformerClassifier:
 
         print(f"Using device: {self.device}")
 
-        # Load configuration and customize it
         config = AutoConfig.from_pretrained(model_name)
         config.num_labels = num_labels
         config.hidden_dropout_prob = hidden_dropout_prob
         config.attention_probs_dropout_prob = attention_probs_dropout_prob
-        
+
         # Some models don't have classifier_dropout in their config
-        # If it exists in the config, use it; otherwise, add it later on our 
+        # If it exists in the config, use it; otherwise, add it later on our
         # custom classifier head
         # This is a workaround for models that don't have this parameter in their config
-        if hasattr(config, 'classifier_dropout'):
+        if hasattr(config, "classifier_dropout"):
             config.classifier_dropout = classifier_dropout
-        elif hasattr(config, 'classifier_dropout_prob'):
+        elif hasattr(config, "classifier_dropout_prob"):
             config.classifier_dropout_prob = classifier_dropout
         else:
-            print(f"No classifier dropout parameter found in config. Model: {model_name}")
+            print(
+                f"No classifier dropout parameter found in config. Model: {model_name}"
+            )
+            print(
+                f"Please use custom classifier head if you want to implement for this model"
+            )
             pass
-            
+        
         # Initialize tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(
@@ -77,15 +101,22 @@ class TransformerClassifier:
             print(f"Using custom classifier head for model: {model_name}")
             # Get the size of the hidden states
             hidden_size = config.hidden_size
-            
-            # Replace the classifier with a custom one
-            self.model.classifier = torch.nn.Sequential(
-                torch.nn.Linear(hidden_size, hidden_size),
-                torch.nn.ReLU(),
-                torch.nn.Dropout(classifier_dropout),
-                torch.nn.Linear(hidden_size, num_labels)
-            )
-        
+
+            if model_name == "roberta-base":
+                self.model.classifier = CustomRobertaHead(
+                    hidden_size=hidden_size,
+                    num_labels=num_labels,
+                    dropout=classifier_dropout,
+                )
+            else:
+                # Replace the classifier with a custom one
+                self.model.classifier = torch.nn.Sequential(
+                    torch.nn.Linear(hidden_size, hidden_size),
+                    torch.nn.ReLU(),
+                    torch.nn.Dropout(classifier_dropout),
+                    torch.nn.Linear(hidden_size, num_labels),
+                )
+
         self.model.to(self.device)
 
     def train(
@@ -120,7 +151,12 @@ class TransformerClassifier:
             Dictionary with training history
         """
         # Initialize optimizer
-        optimizer = AdamW(self.model.parameters(), lr=learning_rate, eps=1e-8, weight_decay=weight_decay)
+        optimizer = AdamW(
+            self.model.parameters(),
+            lr=learning_rate,
+            eps=1e-8,
+            weight_decay=weight_decay,
+        )
 
         # Total number of training steps
         total_steps = len(train_dataloader) * epochs
@@ -144,13 +180,13 @@ class TransformerClassifier:
             loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
         else:
             loss_fn = torch.nn.CrossEntropyLoss()
-        
+
         # Early stopping variables
-        best_metric_value = float('inf') if monitor == 'val_loss' else -float('inf')
+        best_metric_value = float("inf") if monitor == "val_loss" else -float("inf")
         best_epoch = 0
         no_improve_count = 0
         best_model_state = None
-        
+
         # Training loop
         for epoch in range(epochs):
             print(f"\nEpoch {epoch+1}/{epochs}")
@@ -211,36 +247,50 @@ class TransformerClassifier:
             print(f"Validation loss: {val_loss:.4f}")
             print(f"Validation accuracy: {val_accuracy:.4f}")
             print(f"Validation F1 score: {val_f1:.4f}")
-            
+
             # Check for early stopping
-            current_metric = val_loss if monitor == 'val_loss' else val_accuracy if monitor == 'val_accuracy' else val_f1
-            if monitor == 'val_loss':
+            current_metric = (
+                val_loss
+                if monitor == "val_loss"
+                else val_accuracy if monitor == "val_accuracy" else val_f1
+            )
+            if monitor == "val_loss":
                 improved = current_metric < best_metric_value - min_delta
             else:
                 improved = current_metric > best_metric_value + min_delta
-                
+
             if improved:
-                print(f"Validation {monitor} improved from {best_metric_value:.4f} to {current_metric:.4f}")
+                print(
+                    f"Validation {monitor} improved from {best_metric_value:.4f} to {current_metric:.4f}"
+                )
                 best_metric_value = current_metric
                 best_epoch = epoch
                 no_improve_count = 0
-                
+
                 # Save best model state
-                best_model_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+                best_model_state = {
+                    k: v.cpu().clone() for k, v in self.model.state_dict().items()
+                }
             else:
                 no_improve_count += 1
-                print(f"Validation {monitor} did not improve. Best: {best_metric_value:.4f}, Current: {current_metric:.4f}")
+                print(
+                    f"Validation {monitor} did not improve. Best: {best_metric_value:.4f}, Current: {current_metric:.4f}"
+                )
                 print(f"Early stopping counter: {no_improve_count}/{patience}")
-                
+
                 if no_improve_count >= patience:
-                    print(f"Early stopping triggered. Best {monitor}: {best_metric_value:.4f} at epoch {best_epoch+1}")
+                    print(
+                        f"Early stopping triggered. Best {monitor}: {best_metric_value:.4f} at epoch {best_epoch+1}"
+                    )
                     break
-        
+
         # Load best model if early stopping occurred
         if best_model_state is not None and best_epoch < epoch:
             print(f"Loading best model from epoch {best_epoch+1}")
-            self.model.load_state_dict({k: v.to(self.device) for k, v in best_model_state.items()})
-        
+            self.model.load_state_dict(
+                {k: v.to(self.device) for k, v in best_model_state.items()}
+            )
+
         return history
 
     def evaluate(
