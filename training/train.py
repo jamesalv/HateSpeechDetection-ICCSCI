@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Any, Union, Optional
 from models.classifier import TransformerClassifier
 from data.dataset import prepare_data_loaders
 from analysis.bias import calculate_gmb_metrics
-
+from transformers import AutoTokenizer
 
 def train_and_evaluate_model(
     model_name: str,
@@ -60,16 +60,8 @@ def train_and_evaluate_model(
     Returns:
         Dictionary with results
     """
-    # Initialize model
-    classifier = TransformerClassifier(
-        model_name,
-        num_classes,
-        hidden_dropout_prob=hidden_dropout_prob,
-        attention_probs_dropout_prob=attention_probs_dropout_prob,
-        classifier_dropout=classifier_dropout,
-        custom_classifier_head=custom_classifier_head,
-    )
-
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     # Prepare data loaders
     (
         train_dataloader,
@@ -80,7 +72,7 @@ def train_and_evaluate_model(
         label_to_weight,
     ) = prepare_data_loaders(
         data_df,
-        classifier.tokenizer,
+        tokenizer,
         batch_size=batch_size,
         max_length=max_length,
         auto_weighted=auto_weighted,
@@ -94,12 +86,22 @@ def train_and_evaluate_model(
     }
     print(f"Class weights: {class_weights}")
     ordered_weights = np.array([class_weights[i] for i in range(len(class_weights))])
-
+    
+    # Initialize model
+    classifier = TransformerClassifier(
+        model_name,
+        num_classes,
+        hidden_dropout_prob=hidden_dropout_prob,
+        attention_probs_dropout_prob=attention_probs_dropout_prob,
+        classifier_dropout=classifier_dropout,
+        custom_classifier_head=custom_classifier_head,
+        class_weights=ordered_weights,
+    )
+    
     # Train model
     history = classifier.train(
         train_dataloader,
         val_dataloader,
-        class_weights=ordered_weights,
         epochs=epochs,
         learning_rate=learning_rate,
         warmup_steps=warmup_steps,

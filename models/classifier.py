@@ -44,6 +44,7 @@ class TransformerClassifier:
         attention_probs_dropout_prob: float = 0.1,
         classifier_dropout: float = 0.1,
         custom_classifier_head: bool = False,
+        class_weights: Optional[np.ndarray] = None,
         device=None,
     ):
         """
@@ -89,13 +90,13 @@ class TransformerClassifier:
                 f"Please use custom classifier head if you want to implement for this model"
             )
             pass
-        
+
         # Initialize tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_name, config=config
         )
-        
+
         # Optional custom classifier head
         if custom_classifier_head:
             print(f"Using custom classifier head for model: {model_name}")
@@ -117,13 +118,24 @@ class TransformerClassifier:
                     torch.nn.Linear(hidden_size, num_labels),
                 )
 
+        # Setup loss function with class weights if provided
+        if class_weights is not None:
+            # Convert class weights to tensor of type float32 and move to device
+            weight_tensor = torch.tensor(
+                [class_weights[i] for i in range(self.num_labels)],
+                device=self.device,
+                dtype=torch.float32,  # Explicitly specify float32
+            )
+            self.loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
+        else:
+            self.loss_fn = torch.nn.CrossEntropyLoss()
+
         self.model.to(self.device)
 
     def train(
         self,
         train_dataloader: torch.utils.data.DataLoader,
         val_dataloader: torch.utils.data.DataLoader,
-        class_weights: Optional[np.ndarray] = None,
         epochs: int = 5,
         learning_rate: float = 2e-5,
         warmup_steps: int = 0,
@@ -169,18 +181,6 @@ class TransformerClassifier:
         # Initialize training history
         history = {"train_loss": [], "val_loss": [], "val_accuracy": [], "val_f1": []}
 
-        # Setup loss function with class weights if provided
-        if class_weights is not None:
-            # Convert class weights to tensor of type float32 and move to device
-            weight_tensor = torch.tensor(
-                [class_weights[i] for i in range(self.num_labels)],
-                device=self.device,
-                dtype=torch.float32,  # Explicitly specify float32
-            )
-            loss_fn = torch.nn.CrossEntropyLoss(weight=weight_tensor)
-        else:
-            loss_fn = torch.nn.CrossEntropyLoss()
-
         # Early stopping variables
         best_metric_value = float("inf") if monitor == "val_loss" else -float("inf")
         best_epoch = 0
@@ -208,12 +208,10 @@ class TransformerClassifier:
                 labels = batch["labels"].to(self.device)
 
                 # Forward pass
-                outputs = self.model(
-                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
-                )
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
 
                 logits = outputs.logits
-                loss = loss_fn(logits, labels)
+                loss = self.loss_fn(logits, labels)
                 total_train_loss += loss.item()
 
                 # Backward pass
