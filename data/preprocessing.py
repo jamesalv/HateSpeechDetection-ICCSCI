@@ -121,10 +121,13 @@ def process_raw_entries(data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int
         processed_entry["processed_text"] = preprocess_text(raw_text)  # Store preprocessed text
         
         # Extract labels and target groups
+        # Only select target groups which at least selected by twon annotator
         labels = [annot["label"] for annot in value["annotators"]]
         target_groups = []
         for annot in value["annotators"]:
             target_groups.extend(annot["target"])
+        counter_groups = Counter(target_groups)
+        target_groups = [group for group, count in counter_groups.items() if count > 1]
         
         # Skip entries where all annotators disagree
         if len(set(labels)) == 3:

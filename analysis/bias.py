@@ -87,7 +87,7 @@ def plot_target_group_performance(results: Dict[str, Dict[str, Any]], task_type:
         plt.bar(x + offset, model_data, width, label=model_name)
     
     plt.xlabel('Target Group')
-    plt.ylabel('Accuracy')
+    plt.ylabel('AUROC Score')
     plt.title(f'Model Performance by Target Group ({task_type} Classification)')
     plt.xticks(x, target_groups, rotation=45, ha='right')
     plt.legend()
@@ -149,6 +149,7 @@ def calculate_gmb_metrics(
             positive_ids, negative_ids = get_bias_evaluation_samples(test_df, method, group)
             
             if len(positive_ids) == 0 or len(negative_ids) == 0:
+                print(f"Skipping {method} for group {group}: no samples found")
                 continue  # Skip if no samples for this group/method
                 
             # Collect ground truth and predictions
@@ -198,7 +199,7 @@ def calculate_gmb_metrics(
     if all_scores:
         gmb_metrics['GMB-COMBINED-AUC'] = np.mean([score ** power for score in all_scores]) ** (1/power)
     
-    return gmb_metrics
+    return gmb_metrics, bias_metrics
 
 def plot_gmb_metrics(results: Dict[str, Dict[str, Any]], task_type: str = '3class') -> None:
     """

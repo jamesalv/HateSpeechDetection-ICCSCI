@@ -165,49 +165,19 @@ def train_and_evaluate_model(
     )
     classifier.save_model(model_save_path)
 
-    # Prepare target group analysis
-    if "target_groups" in test_df.columns:
-        # Analyze performance by target group
-        test_df["predicted"] = text_preds
-        test_df["true"] = text_true
-        test_df["correct"] = test_df["predicted"] == test_df["true"]
-
-        # Extract target groups to analyze
-        all_targets = []
-        for targets in test_df["target_groups"]:
-            all_targets.extend(targets)
-
-        from collections import Counter
-
-        top_targets = Counter(all_targets).most_common(10)
-        print("\nPerformance by Target Group:")
-
-        target_metrics = {}
-        for target, _ in top_targets:
-            # Filter rows containing this target
-            target_df = test_df[test_df["target_groups"].apply(lambda x: target in x)]
-            if len(target_df) < 10:  # Skip if too few samples
-                continue
-
-            target_acc = target_df["correct"].mean()
-            print(f"{target}: Accuracy = {target_acc:.4f} (n={len(target_df)})")
-            target_metrics[target] = target_acc
-    else:
-        target_metrics = None
-        
     if 'target_groups' in test_df.columns:
         # Get list of target groups
         all_targets = []
         for targets in test_df['target_groups']:
             if targets is not None:
                 all_targets.extend(targets)
-        
+        all_targets = [target for target in all_targets if target not in ['None', 'Other']]
         from collections import Counter
         top_targets = Counter(all_targets).most_common(10)
         target_groups = [target for target, _ in top_targets]
         
-        # Calculate GMB metrics
-        bias_auc_metrics = calculate_gmb_metrics(
+        # Calculate GMB metrics and bias_metrics (AUROC per target group)
+        gmb_metrics, bias_metrics = calculate_gmb_metrics(
             predictions, 
             probabilities, 
             true_labels, 
@@ -217,9 +187,23 @@ def train_and_evaluate_model(
         
         # Print GMB metrics
         print("\nBias AUC Metrics:")
-        for metric, value in bias_auc_metrics.items():
+        for metric, value in gmb_metrics.items():
             print(f"{metric}: {value:.4f}")
-
+        
+        # Print target-specific metrics using BNSP (like the original paper)
+        if bias_metrics.get('bnsp'):
+            print("\nBNSP AUROC by Target Group:")
+            target_metrics = {}
+            for target, auc_score in bias_metrics['bnsp'].items():
+                print(f"{target}: AUROC = {auc_score:.4f}")
+                target_metrics[target] = auc_score
+        else:
+            target_metrics = None
+    else:
+        gmb_metrics = None
+        bias_metrics = None
+        target_metrics = None
+        
     # Return comprehensive results
     results = {
         "model_name": model_name,
@@ -236,7 +220,7 @@ def train_and_evaluate_model(
         "confusion_matrix": cm,
         "label_map": label_map,
         "target_metrics": target_metrics,
-        "bias_auc_metrics": bias_auc_metrics,
+        "bias_auc_metrics": gmb_metrics,
     }
 
     return results
