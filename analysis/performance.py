@@ -104,5 +104,5 @@ def plot_performance_comparison(results: Dict[str, Dict[str, Any]]) -> None:
         plt.suptitle(
             f"Performance Comparison for {task_type} Classification", fontsize=16
         )
-        plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make space for the suptitle
+        plt.tight_layout(rect=(0, 0, 1, 0.95))  # Make space for the suptitle
         plt.show()

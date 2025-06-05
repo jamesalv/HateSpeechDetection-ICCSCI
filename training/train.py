@@ -76,6 +76,8 @@ def train_and_evaluate_model(
         batch_size=batch_size,
         max_length=max_length,
         auto_weighted=auto_weighted,
+        custom_split=True,
+        custom_split_path='E:/Campus/Transformers-Comparison/Raw Data/post_id_divisions.json'
     )
 
     # Invert label map for later use

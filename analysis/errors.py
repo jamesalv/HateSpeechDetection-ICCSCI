@@ -35,6 +35,10 @@ def analyze_errors(
                 best_f1 = result['metrics']['f1_score']
                 model_name = name
     
+    # Ensure model_name is not None at this point
+    if model_name is None:
+        raise ValueError("Could not find a valid model to analyze")
+    
     print(f"\n=== Error Analysis for {model_name} on {task_type} Classification ===\n")
     
     # Load the model
